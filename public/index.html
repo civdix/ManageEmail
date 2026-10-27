@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Response Plotter & Viewer</title>
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for sleek modern icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Brand -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                </div>
+                <h2>MailPlot</h2>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" id="nav-dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" id="nav-senders">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Sender Analytics</span>
+                </a>
+            </nav>
+            
+            <!-- Sidebar Stats Widgets -->
+            <div class="sidebar-stats">
+                <div class="sidebar-stat-card">
+                    <div class="stat-icon purple">
+                        <i class="fa-solid fa-inbox"></i>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-label">Total Fetched</span>
+                        <h3 id="stat-total">0</h3>
+                    </div>
+                </div>
+                <div class="sidebar-stat-card">
+                    <div class="stat-icon green">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-label">Last Sync</span>
+                        <h3 id="stat-last-sync">Never</h3>
+                    </div>
+                </div>
+                <div class="sidebar-stat-card">
+                    <div class="stat-icon blue">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div class="stat-details">
+                        <span class="stat-label">IMAP Connection</span>
+                        <h3>Secure (SSL)</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="user-profile">
+                <i class="fa-solid fa-circle-user avatar"></i>
+                <div class="user-info">
+                    <span class="user-name">User Dashboard</span>
+                    <span class="user-email">Active Session</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="header-title">
+                    <h1>Email Plotter</h1>
+                    <p class="subtitle">Monitor and read incoming inbox emails in real-time.</p>
+                </div>
+                <div class="account-switcher">
+                    <i class="fa-solid fa-user-check"></i>
+                    <select id="account-select" aria-label="Email account"></select>
+                </div>
+                <div class="actions-bar">
+                    <button id="refresh-btn" class="btn btn-primary">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Sync Inbox</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Email List / Plotter Section -->
+            <section class="content-card" id="dashboard-page">
+                <div class="table-header">
+                    <h2 id="table-title">Inbox Emails</h2>
+                    <div class="table-actions">
+                        <div class="select-box">
+                            <i class="fa-solid fa-folder select-icon"></i>
+                            <select id="folder-select">
+                                <option value="INBOX">Inbox</option>
+                                <option value="[Gmail]/Sent Mail">Sent Mail</option>
+                                <option value="[Gmail]/Drafts">Drafts</option>
+                                <option value="[Gmail]/Spam">Spam</option>
+                                <option value="[Gmail]/Trash">Trash</option>
+                                <option value="[Gmail]/All Mail">All Mail</option>
+                            </select>
+                        </div>
+                        <div class="select-box limit-select-box">
+                            <i class="fa-solid fa-list select-icon"></i>
+                            <select id="limit-select">
+                                <option value="10">10 per page</option>
+                                <option value="25">25 per page</option>
+                                <option value="50" selected>50 per page</option>
+                                <option value="100">100 per page</option>
+                                <option value="250">250 per page</option>
+                                <option value="500">500 per page</option>
+                                <option value="1000">1000 per page</option>
+                            </select>
+                        </div>
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                            <input type="text" id="search-input" placeholder="Search sender, subject...">
+                        </div>
+                        <div class="select-box selection-select-box">
+                            <i class="fa-solid fa-check-double select-icon"></i>
+                            <select id="selection-select" aria-label="Select emails">
+                                <option value="">Select emails</option>
+                                <option value="first100">Select first 100</option>
+                                <option value="all">Select all loaded</option>
+                                <option value="clear">Clear selection</option>
+                            </select>
+                        </div>
+                        <button id="delete-selected-btn" class="btn btn-danger" type="button" disabled>
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span>Delete Selected (0)</span>
+                        </button>
+                        <button id="copy-selected-btn" class="btn btn-secondary" type="button" disabled>
+                            <i class="fa-solid fa-copy"></i>
+                            <span>Copy Selected</span>
+                        </button>
+                        <button id="empty-trash-btn" class="btn btn-danger" type="button" disabled>
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span>Empty Trash</span>
+                        </button>
+                        <form id="spam-sender-form" class="spam-sender-form">
+                            <input id="spam-sender-input" type="email" placeholder="Sender email to block" required>
+                            <button id="spam-sender-btn" class="btn btn-secondary" type="submit">
+                                <i class="fa-solid fa-ban"></i>
+                                <span>Block Sender</span>
+                            </button>
+                        </form>
+                        <form id="spam-domain-form" class="spam-sender-form">
+                            <input id="spam-domain-input" type="text" placeholder="Domain to block (example.com)" required>
+                            <button id="spam-domain-btn" class="btn btn-secondary" type="submit">
+                                <i class="fa-solid fa-globe"></i>
+                                <span>Block Domain</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table id="emails-table">
+                        <thead>
+                            <tr>
+                                <th width="4%"><input id="select-all-checkbox" type="checkbox" aria-label="Select all loaded emails"></th>
+                                <th width="8%">UID</th>
+                                <th width="27%">Sender</th>
+                                <th width="45%">Subject</th>
+                                <th width="20%">Date Received</th>
+                            </tr>
+                        </thead>
+                        <tbody id="emails-tbody">
+                            <!-- Loading indicator -->
+                            <tr class="table-loading-row">
+                                <td colspan="5" class="text-center">
+                                    <div class="spinner-container">
+                                        <div class="spinner"></div>
+                                        <p>Connecting to IMAP server and retrieving emails...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Sender Analytics Section -->
+            <section class="content-card" id="senders-page" style="display: none;">
+                <div class="table-header">
+                    <h2>Sender Frequency Analysis</h2>
+                    <div class="table-actions">
+                        <div class="select-box">
+                            <i class="fa-solid fa-folder select-icon"></i>
+                            <select id="senders-folder-select">
+                                <option value="INBOX">Inbox</option>
+                                <option value="[Gmail]/Sent Mail">Sent Mail</option>
+                                <option value="[Gmail]/Drafts">Drafts</option>
+                                <option value="[Gmail]/Spam">Spam</option>
+                                <option value="[Gmail]/Trash">Trash</option>
+                                <option value="[Gmail]/All Mail">All Mail</option>
+                            </select>
+                        </div>
+                        <div class="select-box limit-select-box">
+                            <i class="fa-solid fa-chart-bar select-icon"></i>
+                            <select id="senders-limit-select">
+                                <option value="batch" selected>Analyze all emails in batches of 10,000</option>
+                                <option value="10000">Analyze 10,000 emails</option>
+                            </select>
+                        </div>
+                        <button id="fetch-senders-btn" class="btn btn-primary">
+                            <i class="fa-solid fa-chart-pie"></i>
+                            <span>Analyze Senders</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table id="senders-table">
+                        <thead>
+                            <tr>
+                                <th width="10%">Rank</th>
+                                <th width="35%">Sender Email</th>
+                                <th width="25%">Sender Name</th>
+                                <th width="30%">Email Frequency & Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody id="senders-tbody">
+                            <tr class="table-empty-row">
+                                <td colspan="4" class="text-center">
+                                    <div class="empty-state">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                        <p>Select folder/limit and click "Analyze Senders" to run the frequency analysis.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Right Side Slide-Over Email Detail Drawer -->
+        <div id="detail-drawer" class="detail-drawer">
+            <div class="drawer-header">
+                <div class="drawer-header-left">
+                    <span class="badge" id="detail-uid-badge">UID: 0</span>
+                    <h2 id="detail-subject">Email Subject Title</h2>
+                </div>
+                <div class="drawer-header-actions">
+                    <button id="delete-email-btn" class="delete-btn" type="button">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span>Delete</span>
+                    </button>
+                    <button id="close-drawer-btn" class="close-btn" type="button">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="drawer-meta">
+                <div class="meta-row">
+                    <span class="meta-label">From:</span>
+                    <span class="meta-value font-semibold" id="detail-from">sender@example.com</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">To:</span>
+                    <span class="meta-value" id="detail-to">receiver@example.com</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Date:</span>
+                    <span class="meta-value" id="detail-date">Thu, Jan 01 1970 00:00:00</span>
+                </div>
+                <div class="meta-row" id="drawer-attachments-row" style="display: none;">
+                    <span class="meta-label">Attachments:</span>
+                    <div class="meta-value" id="detail-attachments"></div>
+                </div>
+            </div>
+
+            <form id="reply-form" class="reply-form">
+                <div class="reply-form-header">
+                    <h3>Reply / Compose</h3>
+                    <span id="reply-status" class="reply-status" role="status"></span>
+                </div>
+                <input id="reply-to" type="email" aria-label="Email recipient" placeholder="Recipient email" required>
+                <input id="reply-subject" type="text" aria-label="Email subject" placeholder="Subject" required>
+                <textarea id="reply-text" rows="5" placeholder="Write your reply..." required></textarea>
+                <label class="reply-attachment-label" for="reply-attachment">
+                    <i class="fa-solid fa-paperclip"></i>
+                    <span>Attach a file</span>
+                    <input id="reply-attachment" type="file">
+                </label>
+                <div class="reply-send-controls">
+                    <label for="reply-count">Copies</label>
+                    <input id="reply-count" type="number" min="1" max="100" value="1" required>
+                    <button id="send-reply-btn" class="btn btn-primary" type="submit">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>Send Email</span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Tabs to switch between parsed HTML render and plain text -->
+            <div class="drawer-tabs">
+                <button class="tab-btn active" data-tab="tab-html">HTML Format</button>
+                <button class="tab-btn" data-tab="tab-text">Text Format</button>
+            </div>
+
+            <div class="drawer-body">
+                <!-- HTML Preview Iframe for isolation -->
+                <div id="tab-html" class="tab-content active">
+                    <div class="iframe-container">
+                        <iframe id="email-body-iframe" title="Email Body Content"></iframe>
+                    </div>
+                </div>
+                <!-- Text Preview Container -->
+                <div id="tab-text" class="tab-content">
+                    <pre id="email-body-text" class="raw-text-view"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drawer Backdrop Overlay -->
+        <div id="drawer-overlay" class="drawer-overlay"></div>
+    </div>
+
+    <script src="app.js?v=20261025"></script>
+</body>
+</html>
