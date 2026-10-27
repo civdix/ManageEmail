@@ -22,19 +22,50 @@ const uploadReplyAttachment = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
-const configuredAccounts = Object.keys(process.env)
-  .filter((key) => /^EMAIL\d*$/.test(key))
-  .map((key) => key.replace("EMAIL", ""))
-  .filter(
-    (suffix) =>
-      process.env[`EMAIL${suffix}`] && process.env[`APP_PASSWORD${suffix}`],
-  )
-  .sort((a, b) => (a === "" ? -1 : b === "" ? 1 : Number(a) - Number(b)))
-  .map((suffix) => ({
-    id: suffix === "" ? "default" : suffix,
-    email: process.env[`EMAIL${suffix}`],
-    password: process.env[`APP_PASSWORD${suffix}`],
-  }));
+function parseConfiguredAccounts() {
+  const rawAccounts = process.env.EMAIL_ACCOUNTS;
+  if (!rawAccounts) {
+    throw new Error(
+      "EMAIL_ACCOUNTS is required. Set it to a JSON list such as [[\"user@gmail.com\",\"app-password\",\"gmail\"]].",
+    );
+  }
+
+  let accounts;
+  try {
+    accounts = JSON.parse(rawAccounts);
+  } catch (error) {
+    throw new Error(`EMAIL_ACCOUNTS must contain valid JSON: ${error.message}`);
+  }
+
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    throw new Error("EMAIL_ACCOUNTS must be a non-empty JSON list");
+  }
+
+  return accounts.map((account, index) => {
+    if (
+      !Array.isArray(account) ||
+      account.length < 2 ||
+      account.length > 3 ||
+      typeof account[0] !== "string" ||
+      typeof account[1] !== "string" ||
+      !account[0].trim() ||
+      !account[1].trim()
+    ) {
+      throw new Error(
+        `EMAIL_ACCOUNTS entry ${index + 1} must be [email, password, server?]`,
+      );
+    }
+
+    return {
+      id: String(index + 1),
+      email: account[0].trim(),
+      password: account[1].trim(),
+      server: String(account[2] || "gmail").trim() || "gmail",
+    };
+  });
+}
+
+const configuredAccounts = parseConfiguredAccounts();
 let activeAccountId =
   configuredAccounts[configuredAccounts.length - 1]?.id || "default";
 let lastConnectedAccountId = null;
@@ -44,6 +75,10 @@ function selectAccount(accountId) {
   if (!account) return false;
   process.env.EMAIL = account.email;
   process.env.APP_PASSWORD = account.password;
+  process.env.EMAILHOST =
+    account.server.toLowerCase() === "gmail"
+      ? "imap.gmail.com"
+      : account.server;
   activeAccountId = account.id;
   return true;
 }

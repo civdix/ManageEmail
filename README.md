@@ -44,76 +44,64 @@ Then open `http://localhost:4000`.
 
 Create a `.env` file in the project root. Do not commit this file or share its contents.
 
-### One email account
+### Email account list
 
-The unnumbered variables configure one account:
-
-```dotenv
-EMAIL=your-account@gmail.com
-APP_PASSWORD=abcdefghijklmnop
-```
-
-### Multiple email accounts
-
-Use the same numeric suffix for the email address and its app password:
-
-```dotenv
-EMAIL1=first-account@gmail.com
-APP_PASSWORD1=first-account-app-password
-
-EMAIL2=second-account@gmail.com
-APP_PASSWORD2=second-account-app-password
-
-EMAIL3=third-account@gmail.com
-APP_PASSWORD3=third-account-app-password
-```
-
-The suffixes must match. For example, `EMAIL2` is paired with `APP_PASSWORD2`.
-
-The account selector in the top-right of the application displays every complete pair. An account is included only when both variables are present:
+Configure all accounts in one JSON environment variable named `EMAIL_ACCOUNTS`.
+Each entry is:
 
 ```text
-EMAIL2 + APP_PASSWORD2 = included
-EMAIL3 without APP_PASSWORD3 = ignored
-APP_PASSWORD4 without EMAIL4 = ignored
+[email, app-password, server]
 ```
 
-The application selects the last configured account by numeric order when it starts. You can switch accounts from the account dropdown without restarting the server.
+The server value is optional and defaults to Gmail:
+
+```dotenv
+EMAIL_ACCOUNTS='[["first-account@gmail.com","first-app-password"],["second-account@gmail.com","second-app-password","gmail"],["third@example.com","third-app-password","imap.example.com"]]'
+```
+
+Use single quotes around the complete JSON value in `.env`. The application
+assigns account IDs in list order (`1`, `2`, `3`, ...). The account selector in
+the top-right displays these accounts, and you can switch accounts without
+restarting the server.
+
+The old `EMAIL`, `EMAIL1`, `APP_PASSWORD`, and `APP_PASSWORD1` variables are no
+longer supported. Remove them after migrating to `EMAIL_ACCOUNTS`.
 
 ### IMAP and port options
 
-Gmail uses these defaults:
+Gmail is the default when the third value is omitted or set to `gmail`:
 
 ```dotenv
-EMAILHOST=imap.gmail.com
+EMAIL_ACCOUNTS='[["user@gmail.com","app-password","gmail"]]'
 PORT=3000
 ```
 
-For another provider, set its IMAP host:
+For another provider, set its IMAP host as the third value:
 
 ```dotenv
-EMAILHOST=imap.example.com
+EMAIL_ACCOUNTS='[["user@example.com","app-password","imap.example.com"]]'
 PORT=3000
 ```
 
-The application uses secure IMAP on port `993`. Email sending uses the provider configured by Nodemailer.
+The application uses secure IMAP on port `993`. Email sending currently uses
+Gmail's Nodemailer service configuration.
 
 ### App-password formatting
 
 App passwords are normally shown in groups of characters. Either format is accepted:
 
-```dotenv
-APP_PASSWORD1=abcd efgh ijkl mnop
+```text
+EMAIL_ACCOUNTS='[["user@gmail.com","abcd efgh ijkl mnop","gmail"]]'
 ```
 
-```dotenv
-APP_PASSWORD1=abcdefghijklmnop
+```text
+EMAIL_ACCOUNTS='[["user@gmail.com","abcdefghijklmnop","gmail"]]'
 ```
 
 The application removes whitespace before authenticating. Quoting the value is also supported:
 
-```dotenv
-APP_PASSWORD1="abcd efgh ijkl mnop"
+```text
+EMAIL_ACCOUNTS='[["user@gmail.com","abcd efgh ijkl mnop","gmail"]]'
 ```
 
 Do not use the normal account password when two-factor authentication is enabled. Use an app password.
@@ -126,7 +114,8 @@ For each Gmail account:
 2. Open the Google Account security page.
 3. Open **App passwords**.
 4. Create a password for this application.
-5. Copy the generated 16-character password into the matching `APP_PASSWORD` variable.
+5. Copy the generated 16-character password into the matching account entry in
+   `EMAIL_ACCOUNTS`.
 6. Save `.env`.
 7. Restart the application.
 
@@ -248,8 +237,7 @@ Replies support plain text and one optional attachment. Reply attachments are li
 Check that every account has both variables:
 
 ```dotenv
-EMAIL1=account@example.com
-APP_PASSWORD1=app-password
+EMAIL_ACCOUNTS='[["account@example.com","app-password","gmail"]]'
 ```
 
 Then restart the server. Environment variables are read when Node.js starts.
@@ -268,10 +256,10 @@ Whitespace in app-password values is removed automatically, but the variable nam
 
 ### IMAP connection timeout
 
-The application uses secure IMAP on port `993`. Check network access and firewall rules. For Gmail, verify that `EMAILHOST` is either unset or set to:
+The application uses secure IMAP on port `993`. Check network access and firewall rules. For Gmail, verify that the third account value is `gmail` or omitted:
 
-```dotenv
-EMAILHOST=imap.gmail.com
+```text
+EMAIL_ACCOUNTS='[["user@gmail.com","app-password","gmail"]]'
 ```
 
 Restart after changing `.env`.
@@ -343,6 +331,32 @@ Start the development server:
 ```powershell
 npm run dev
 ```
+
+Check one account's IMAP credentials without starting the web server:
+
+```powershell
+node .\check-credentials.js user@gmail.com "app-password"
+```
+
+The third argument is optional. It defaults to Gmail:
+
+```powershell
+node .\check-credentials.js user@example.com "app-password" imap.example.com
+```
+
+You can also use the npm script:
+
+```powershell
+npm run check-credentials -- user@gmail.com "app-password"
+```
+
+Exit codes:
+
+- `0`: credentials were accepted by the IMAP server
+- `1`: connection or authentication failed
+- `2`: required arguments were omitted
+
+The command removes spaces from app-password values, so both `"abcd efgh ijkl mnop"` and `"abcdefghijklmnop"` work. Avoid sharing the command because the password appears in the terminal command history.
 
 Validate JavaScript syntax:
 

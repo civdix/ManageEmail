@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "check-credentials": "node check-credentials.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
