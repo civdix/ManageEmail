@@ -3,8 +3,8 @@ import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 
 // Helper helper to build a configured ImapFlow client
-function createImapClient() {
-  let host = process.env.EMAILHOST || "imap.gmail.com";
+function createImapClient(account) {
+  let host = account?.server || "imap.gmail.com";
   // Auto-resolve common user configuration error (SMTP instead of IMAP)
   if (host.trim().toLowerCase() === "smtp.gmail.com") {
     host = "imap.gmail.com";
@@ -19,8 +19,8 @@ function createImapClient() {
     greetingTimeout: 30000,
     socketTimeout: 60000,
     auth: {
-      user: process.env.EMAIL,
-      pass: (process.env.APP_PASSWORD || "").replace(/\s+/g, ""),
+      user: account?.email,
+      pass: (account?.password || "").replace(/\s+/g, ""),
     },
   });
   client.on("error", (error) => {
@@ -29,8 +29,8 @@ function createImapClient() {
   return client;
 }
 
-export async function getLatestEmails(folder = "INBOX", page = 1, limit = 50) {
-  const client = createImapClient();
+export async function getLatestEmails(folder = "INBOX", page = 1, limit = 50, account) {
+  const client = createImapClient(account);
 
   await client.connect();
 
@@ -71,8 +71,8 @@ export async function getLatestEmails(folder = "INBOX", page = 1, limit = 50) {
   };
 }
 
-export async function getEmailDetails(uid, folder = "INBOX") {
-  const client = createImapClient();
+export async function getEmailDetails(uid, folder = "INBOX", account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen(folder);
@@ -125,8 +125,9 @@ export async function getEmailAttachment(
   uid,
   attachmentIndex,
   folder = "INBOX",
+  account,
 ) {
-  const client = createImapClient();
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen(folder);
@@ -160,8 +161,8 @@ export async function getEmailAttachment(
   return attachment;
 }
 
-export async function deleteEmail(uid, folder = "INBOX") {
-  const client = createImapClient();
+export async function deleteEmail(uid, folder = "INBOX", account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen(folder);
@@ -179,8 +180,8 @@ export async function deleteEmail(uid, folder = "INBOX") {
   return true;
 }
 
-export async function deleteEmails(uids, folder = "INBOX") {
-  const client = createImapClient();
+export async function deleteEmails(uids, folder = "INBOX", account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen(folder);
@@ -198,8 +199,8 @@ export async function deleteEmails(uids, folder = "INBOX") {
   return true;
 }
 
-export async function emptyTrash(folder = "[Gmail]/Trash") {
-  const client = createImapClient();
+export async function emptyTrash(folder = "[Gmail]/Trash", account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen(folder);
@@ -217,8 +218,8 @@ export async function emptyTrash(folder = "[Gmail]/Trash") {
   return true;
 }
 
-export async function moveSenderToSpam(senderEmail) {
-  const client = createImapClient();
+export async function moveSenderToSpam(senderEmail, account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen("INBOX");
@@ -246,8 +247,8 @@ export async function moveSenderToSpam(senderEmail) {
   }
 }
 
-export async function moveDomainToSpam(domain) {
-  const client = createImapClient();
+export async function moveDomainToSpam(domain, account) {
+  const client = createImapClient(account);
 
   await client.connect();
   await client.mailboxOpen("INBOX");
@@ -282,17 +283,30 @@ export async function sendEmailReply({
   inReplyTo,
   references,
   attachment,
+  account,
 }) {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL,
-      pass: (process.env.APP_PASSWORD || "").replace(/\s+/g, ""),
-    },
-  });
+  const smtpTransport =
+    account?.server?.toLowerCase() === "gmail"
+      ? {
+          service: "gmail",
+          auth: {
+            user: account.email,
+            pass: (account.password || "").replace(/\s+/g, ""),
+          },
+        }
+      : {
+          host: `smtp.${String(account?.server || "").replace(/^imap\./, "")}`,
+          port: 465,
+          secure: true,
+          auth: {
+            user: account?.email,
+            pass: (account?.password || "").replace(/\s+/g, ""),
+          },
+        };
+  const transporter = nodemailer.createTransport(smtpTransport);
 
   return transporter.sendMail({
-    from: process.env.EMAIL,
+    from: account?.email,
     to,
     subject,
     text,
@@ -314,8 +328,9 @@ export async function getSenderFrequency(
   folder = "INBOX",
   limit = 10000,
   offset = 0,
+  account,
 ) {
-  const client = createImapClient();
+  const client = createImapClient(account);
 
   await client.connect();
   const mailbox = await client.mailboxOpen(folder);

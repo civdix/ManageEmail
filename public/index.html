@@ -13,7 +13,27 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app-container">
+    <section id="login-screen" class="login-screen">
+        <form id="login-form" class="login-card">
+            <div class="login-logo">
+                <i class="fa-solid fa-envelope-open-text"></i>
+            </div>
+            <h1>Sign in to MailPlot</h1>
+            <p>Use your email and app password. Credentials are used only for this browser session.</p>
+            <label for="login-email">Email address</label>
+            <input id="login-email" type="email" autocomplete="username" placeholder="you@example.com" required>
+            <label for="login-password">App password</label>
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="App password" required>
+            <label for="login-server">IMAP server</label>
+            <input id="login-server" type="text" value="gmail" placeholder="gmail or imap.example.com">
+            <span id="login-status" class="login-status" role="alert"></span>
+            <button id="login-btn" class="btn btn-primary login-btn" type="submit">
+                <span>Sign in</span>
+            </button>
+        </form>
+    </section>
+
+    <div class="app-container" id="app-container" style="display: none;">
         <!-- Sidebar / Brand -->
         <aside class="sidebar">
             <div class="brand">
@@ -68,7 +88,7 @@
                 <i class="fa-solid fa-circle-user avatar"></i>
                 <div class="user-info">
                     <span class="user-name">User Dashboard</span>
-                    <span class="user-email">Active Session</span>
+                    <span class="user-email" id="profile-account-email">Active Session</span>
                 </div>
             </div>
         </aside>
@@ -82,9 +102,13 @@
                 </div>
                 <div class="account-switcher">
                     <i class="fa-solid fa-user-check"></i>
-                    <select id="account-select" aria-label="Email account"></select>
+                    <span id="active-account-email">Signed in</span>
                 </div>
                 <div class="actions-bar">
+                    <button id="logout-btn" class="btn btn-secondary" type="button">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span>Sign out</span>
+                    </button>
                     <button id="refresh-btn" class="btn btn-primary">
                         <i class="fa-solid fa-arrows-rotate"></i>
                         <span>Sync Inbox</span>

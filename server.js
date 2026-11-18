@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config({ override: true });
 import express from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import {
   deleteEmail,
@@ -22,68 +23,30 @@ const uploadReplyAttachment = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
-function parseConfiguredAccounts() {
-  const rawAccounts = process.env.EMAIL_ACCOUNTS;
-  if (!rawAccounts) {
-    throw new Error(
-      "EMAIL_ACCOUNTS is required. Set it to a JSON list such as [[\"user@gmail.com\",\"app-password\",\"gmail\"]].",
-    );
+const sessions = new Map();
+
+function parseCookies(req) {
+  const cookies = {};
+  for (const pair of String(req.headers.cookie || "").split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator === -1) continue;
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    cookies[key] = decodeURIComponent(value);
   }
-
-  let accounts;
-  try {
-    accounts = JSON.parse(rawAccounts);
-  } catch (error) {
-    throw new Error(`EMAIL_ACCOUNTS must contain valid JSON: ${error.message}`);
-  }
-
-  if (!Array.isArray(accounts) || accounts.length === 0) {
-    throw new Error("EMAIL_ACCOUNTS must be a non-empty JSON list");
-  }
-
-  return accounts.map((account, index) => {
-    if (
-      !Array.isArray(account) ||
-      account.length < 2 ||
-      account.length > 3 ||
-      typeof account[0] !== "string" ||
-      typeof account[1] !== "string" ||
-      !account[0].trim() ||
-      !account[1].trim()
-    ) {
-      throw new Error(
-        `EMAIL_ACCOUNTS entry ${index + 1} must be [email, password, server?]`,
-      );
-    }
-
-    return {
-      id: String(index + 1),
-      email: account[0].trim(),
-      password: account[1].trim(),
-      server: String(account[2] || "gmail").trim() || "gmail",
-    };
-  });
+  return cookies;
 }
 
-const configuredAccounts = parseConfiguredAccounts();
-let activeAccountId =
-  configuredAccounts[configuredAccounts.length - 1]?.id || "default";
-let lastConnectedAccountId = null;
-
-function selectAccount(accountId) {
-  const account = configuredAccounts.find((item) => item.id === accountId);
-  if (!account) return false;
-  process.env.EMAIL = account.email;
-  process.env.APP_PASSWORD = account.password;
-  process.env.EMAILHOST =
-    account.server.toLowerCase() === "gmail"
-      ? "imap.gmail.com"
-      : account.server;
-  activeAccountId = account.id;
-  return true;
+function getSession(req) {
+  return sessions.get(parseCookies(req).mailplot_session);
 }
 
-selectAccount(activeAccountId);
+function requireSession(req, res, next) {
+  if (!getSession(req)) {
+    return res.status(401).json({ success: false, error: "Authentication required" });
+  }
+  next();
+}
 const blockedSendersPath = new URL("./blocked-senders.json", import.meta.url);
 const blockedDomainsPath = new URL("./blocked-domains.json", import.meta.url);
 let blockedSenders = [];
@@ -164,38 +127,69 @@ app.use("/api", (req, res, next) => {
 app.use(express.json());
 app.use(express.static("public"));
 
-app.get("/api/accounts", (req, res) => {
-  res.json({
-    success: true,
-    activeAccountId,
-    accounts: configuredAccounts.map(({ id, email }) => ({ id, email })),
-  });
+app.get("/api/session", (req, res) => {
+  const session = getSession(req);
+  res.json(
+    session
+      ? { success: true, authenticated: true, email: session.account.email }
+      : { success: true, authenticated: false },
+  );
 });
 
-app.post("/api/accounts/select", (req, res) => {
-  const accountId = String(req.body?.accountId || "");
-  if (!selectAccount(accountId)) {
-    return res
-      .status(404)
-      .json({ success: false, error: "Email account not found" });
+app.post("/api/login", async (req, res) => {
+  const email = String(req.body?.email || "").trim();
+  const password = String(req.body?.password || "").trim();
+  const server = String(req.body?.server || "").trim() || "gmail";
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: "Email and app password are required" });
   }
-  res.json({ success: true, activeAccountId });
+
+  const account = {
+    email,
+    password,
+    server: server.toLowerCase() === "gmail" ? "imap.gmail.com" : server,
+  };
+
+  try {
+    await getLatestEmails("INBOX", 1, 1, account);
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      error: "Login failed. Check the email, app password, and IMAP server.",
+    });
+  }
+
+  const sessionId = randomUUID();
+  sessions.set(sessionId, { account });
+  res.setHeader(
+    "Set-Cookie",
+    `mailplot_session=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${60 * 60 * 8}`,
+  );
+  res.json({ success: true, email });
 });
+
+app.post("/api/logout", requireSession, (req, res) => {
+  sessions.delete(parseCookies(req).mailplot_session);
+  res.setHeader(
+    "Set-Cookie",
+    "mailplot_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
+  );
+  res.json({ success: true });
+});
+
+app.use("/api", requireSession);
 
 // API endpoint to fetch the list of emails (paginated)
 app.get("/api/emails", async (req, res) => {
   const folder = req.query.folder || "INBOX";
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 50;
+  const account = getSession(req).account;
   try {
-    const result = await getLatestEmails(folder, page, limit);
-    if (page === 1 && lastConnectedAccountId !== activeAccountId) {
-      console.log(`Connected successfully: ${process.env.EMAIL}`);
-      lastConnectedAccountId = activeAccountId;
-    }
+    const result = await getLatestEmails(folder, page, limit, account);
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error(`Email connection failed for ${process.env.EMAIL}:`, error);
+    console.error("Email connection failed:", error);
     res.status(500).json({
       success: false,
       error: error.message || "Failed to fetch emails",
@@ -207,8 +201,9 @@ app.get("/api/emails", async (req, res) => {
 app.get("/api/emails/:uid", async (req, res) => {
   const { uid } = req.params;
   const folder = req.query.folder || "INBOX";
+  const account = getSession(req).account;
   try {
-    const details = await getEmailDetails(uid, folder);
+    const details = await getEmailDetails(uid, folder, account);
     if (!details) {
       return res.status(404).json({ success: false, error: "Email not found" });
     }
@@ -226,11 +221,13 @@ app.get("/api/emails/:uid", async (req, res) => {
 app.get("/api/emails/:uid/attachments/:index", async (req, res) => {
   const { uid, index } = req.params;
   const folder = req.query.folder || "INBOX";
+  const account = getSession(req).account;
   try {
     const attachment = await getEmailAttachment(
       uid,
       parseInt(index, 10),
       folder,
+      account,
     );
     if (!attachment) {
       return res
@@ -302,6 +299,7 @@ app.post(
           inReplyTo,
           references,
           attachment: req.file,
+          account: getSession(req).account,
         });
       }
       res.json({ success: true, sentCount: count });
@@ -317,6 +315,7 @@ app.post(
 
 app.delete("/api/emails/bulk", async (req, res) => {
   const folder = req.query.folder || "INBOX";
+  const account = getSession(req).account;
   const uids = Array.isArray(req.body?.uids)
     ? req.body.uids
         .map((uid) => Number.parseInt(uid, 10))
@@ -330,7 +329,7 @@ app.delete("/api/emails/bulk", async (req, res) => {
   }
 
   try {
-    await deleteEmails(uids, folder);
+    await deleteEmails(uids, folder, account);
     res.json({ success: true, deleted: uids.length });
   } catch (error) {
     console.error("Error deleting selected emails:", error);
@@ -345,8 +344,9 @@ app.delete("/api/emails/bulk", async (req, res) => {
 app.delete("/api/emails/:uid", async (req, res) => {
   const { uid } = req.params;
   const folder = req.query.folder || "INBOX";
+  const account = getSession(req).account;
   try {
-    await deleteEmail(uid, folder);
+    await deleteEmail(uid, folder, account);
     res.json({ success: true });
   } catch (error) {
     console.error(`Error deleting email UID ${uid}:`, error);
@@ -359,8 +359,9 @@ app.delete("/api/emails/:uid", async (req, res) => {
 
 app.delete("/api/trash", async (req, res) => {
   const folder = "[Gmail]/Trash";
+  const account = getSession(req).account;
   try {
-    await emptyTrash(folder);
+    await emptyTrash(folder, account);
     res.json({ success: true });
   } catch (error) {
     console.error(`Error emptying trash folder ${folder}:`, error);
@@ -372,6 +373,7 @@ app.delete("/api/trash", async (req, res) => {
 });
 
 app.post("/api/spam-sender", async (req, res) => {
+  const account = getSession(req).account;
   const senderEmail = String(req.body?.senderEmail || "")
     .trim()
     .toLowerCase();
@@ -389,7 +391,7 @@ app.post("/api/spam-sender", async (req, res) => {
       await saveBlockedSenders();
     }
 
-    const moved = await moveSenderToSpam(senderEmail);
+    const moved = await moveSenderToSpam(senderEmail, account);
     res.json({ success: true, moved, blocked: true });
   } catch (error) {
     console.error(`Error moving emails from ${senderEmail} to Spam:`, error);
@@ -401,6 +403,7 @@ app.post("/api/spam-sender", async (req, res) => {
 });
 
 app.post("/api/spam-domain", async (req, res) => {
+  const account = getSession(req).account;
   const domain = String(req.body?.domain || "")
     .trim()
     .toLowerCase()
@@ -422,7 +425,7 @@ app.post("/api/spam-domain", async (req, res) => {
       blockedDomains.push(domain);
       await saveBlockedDomains();
     }
-    const moved = await moveDomainToSpam(domain);
+    const moved = await moveDomainToSpam(domain, account);
     res.json({ success: true, moved, blocked: true });
   } catch (error) {
     console.error(`Error moving domain emails from ${domain} to Spam:`, error);
@@ -435,16 +438,15 @@ app.post("/api/spam-domain", async (req, res) => {
 
 await loadBlockedSenders();
 await loadBlockedDomains();
-setInterval(enforceBlockedSenders, 60 * 1000);
-enforceBlockedSenders();
 
 // API endpoint to analyze sender frequency in a folder
 app.get("/api/senders", async (req, res) => {
   const folder = req.query.folder || "INBOX";
   const limit = Math.min(10000, parseInt(req.query.limit, 10) || 10000);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const account = getSession(req).account;
   try {
-    const result = await getSenderFrequency(folder, limit, offset);
+    const result = await getSenderFrequency(folder, limit, offset, account);
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Error analyzing senders:", error);

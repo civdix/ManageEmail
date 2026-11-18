@@ -19,7 +19,17 @@ let searchLoadRun = 0;
 
 // DOM Elements
 const refreshBtn = document.getElementById("refresh-btn");
-const accountSelect = document.getElementById("account-select");
+const appContainer = document.getElementById("app-container");
+const loginScreen = document.getElementById("login-screen");
+const loginForm = document.getElementById("login-form");
+const loginEmail = document.getElementById("login-email");
+const loginPassword = document.getElementById("login-password");
+const loginServer = document.getElementById("login-server");
+const loginStatus = document.getElementById("login-status");
+const loginBtn = document.getElementById("login-btn");
+const logoutBtn = document.getElementById("logout-btn");
+const activeAccountEmail = document.getElementById("active-account-email");
+const profileAccountEmail = document.getElementById("profile-account-email");
 const searchInput = document.getElementById("search-input");
 const emailsTbody = document.getElementById("emails-tbody");
 const statTotal = document.getElementById("stat-total");
@@ -93,15 +103,15 @@ document.addEventListener("DOMContentLoaded", () => {
     state.limit = parseInt(limitSelect.value, 10) || 50;
   }
   setupEventListeners();
-  loadAccounts().then(fetchEmails);
+  checkSession();
 });
 
 // Event Listeners Configuration
 function setupEventListeners() {
   // Sync / Refresh trigger
   refreshBtn.addEventListener("click", fetchEmails);
-
-  accountSelect.addEventListener("change", switchAccount);
+  loginForm.addEventListener("submit", login);
+  logoutBtn.addEventListener("click", logout);
 
   if (emptyTrashBtn) {
     emptyTrashBtn.addEventListener("click", emptyTrash);
@@ -261,48 +271,68 @@ function setupEventListeners() {
   });
 }
 
-async function loadAccounts() {
+async function checkSession() {
   try {
-    const response = await fetch("/api/accounts", { cache: "no-store" });
+    const response = await fetch("/api/session", { cache: "no-store" });
     const json = await response.json();
-    if (!response.ok || !json.success)
-      throw new Error(json.error || "Failed to load accounts");
-
-    accountSelect.innerHTML = "";
-    json.accounts.forEach((account) => {
-      const option = document.createElement("option");
-      option.value = account.id;
-      option.textContent = account.email;
-      accountSelect.appendChild(option);
-    });
-    accountSelect.value = json.activeAccountId;
-    state.accountId = json.activeAccountId;
+    if (response.ok && json.authenticated) showApp(json.email);
+    else showLogin();
   } catch (error) {
-    console.error("Error loading email accounts:", error);
+    showLogin();
   }
 }
 
-async function switchAccount() {
-  const accountId = accountSelect.value;
-  accountSelect.disabled = true;
+function showLogin() {
+  loginScreen.style.display = "grid";
+  appContainer.style.display = "none";
+  loginPassword.value = "";
+  loginStatus.textContent = "";
+  loginEmail.focus();
+}
+
+function showApp(email) {
+  loginScreen.style.display = "none";
+  appContainer.style.display = "flex";
+  activeAccountEmail.textContent = email;
+  profileAccountEmail.textContent = email;
+  fetchEmails();
+}
+
+async function login(event) {
+  event.preventDefault();
+  loginBtn.disabled = true;
+  loginStatus.textContent = "Connecting...";
   try {
-    const response = await fetch("/api/accounts/select", {
+    const response = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId }),
+      body: JSON.stringify({
+        email: loginEmail.value,
+        password: loginPassword.value,
+        server: loginServer.value,
+      }),
       cache: "no-store",
     });
     const json = await response.json();
     if (!response.ok || !json.success)
-      throw new Error(json.error || "Failed to switch account");
-    state.accountId = accountId;
-    closeDrawer();
-    await fetchEmails();
+      throw new Error(json.error || "Login failed");
+    loginStatus.textContent = "";
+    showApp(json.email);
   } catch (error) {
-    console.error("Error switching email account:", error);
-    alert(error.message || "Failed to switch account");
+    loginStatus.textContent = error.message;
   } finally {
-    accountSelect.disabled = false;
+    loginBtn.disabled = false;
+  }
+}
+
+async function logout() {
+  try {
+    await fetch("/api/logout", { method: "POST", cache: "no-store" });
+  } finally {
+    state.emails = [];
+    state.selectedUids.clear();
+    closeDrawer();
+    showLogin();
   }
 }
 
